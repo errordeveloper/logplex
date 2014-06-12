@@ -254,8 +254,7 @@ handlers() ->
                                                    5)),
         Body = logplex_session:poll(list_to_binary(Session),
                                     Timeout),
-        %% not is_binary(Body) andalso error_resp(404, <<"Not found">>),
-        not is_binary(Body) andalso error_resp(404, list_to_binary(Session)),
+        not is_binary(Body) andalso error_resp(404, <<"Not found">>),
 
         {struct, Data} = mochijson2:decode(Body),
         ChannelId0 = proplists:get_value(<<"channel_id">>, Data),
