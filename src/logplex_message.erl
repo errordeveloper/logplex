@@ -56,6 +56,7 @@ process_msg(RawMsg, ChannelId, Token, TokenName, ShardInfo)
     logplex_stats:incr(message_received),
     logplex_realtime:incr(message_received),
     CookedMsg = iolist_to_binary(re:replace(RawMsg, Token, TokenName)),
+    logplex_firehose:process_msg(ChannelId, Token, CookedMsg),
     process_drains(ChannelId, CookedMsg),
     process_tails(ChannelId, CookedMsg),
     process_redis(ChannelId, ShardInfo, CookedMsg).

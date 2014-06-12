@@ -98,6 +98,9 @@ cache_os_envvars() ->
                       ,{metrics_channel_id, ["METRICS_CHANNEL_ID"],
                         optional,
                         integer}
+                      ,{firehose_channel_id, ["FIREHOSE_CHANNEL_ID"],
+                        optional,
+                        integer}
                       ,{local_ip, ["LOCAL_IP"]}
                       ,{metrics_namespace, ["METRICS_NAMESPACE"],
                         optional}

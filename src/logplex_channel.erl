@@ -169,7 +169,7 @@ delete(ChannelId) when is_integer(ChannelId) ->
             redis_helper:delete_channel(ChannelId)
     end.
 
-lookup(ChannelId) when is_integer(ChannelId) ->
+lookup(ChannelId) when is_integer(ChannelId); is_atom(ChannelId) ->
     case ets:lookup(channels, ChannelId) of
         [Channel = #channel{}] -> Channel;
         _ -> undefined
