@@ -45,7 +45,6 @@ create_ets_tables() ->
     logplex_drain:create_ets_table(),
     logplex_cred:create_ets_table(),
     logplex_session:create_ets_table(),
-    logplex_firehose:create_ets_table(),
     ok.
 
 -spec poll(fun ( () -> 'not_found' | {'found', T} | {'error', E} ),

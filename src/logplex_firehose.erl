@@ -27,27 +27,8 @@
 -define(APP, logplex).
 -define(FIREHOSE_FILTER_TAB, firehose_filters).
 
--export([is_filtered/2,
-         filter_token/1,
-         filter_tokens/1,
-         lookup_firehose/0,
-         create_ets_table/0,
-         process_msg/3]).
-
-filter_token(TokenId) when is_binary(TokenId) ->
-    case logplex_token:lookup(TokenId) of
-        undefined -> false;
-        Token -> filter_token(Token)
-    end;
-
-filter_token(Token) when is_record(Token, token) ->
-    ets:insert(?FIREHOSE_FILTER_TAB, Token).
-
-filter_tokens(Tokens) when is_list(Tokens) ->
-    [ filter_token(Token) || Token <- Tokens ].
-
-is_filtered(_ChannelId, Token) ->
-    not ets:member(?FIREHOSE_FILTER_TAB, Token).
+-export([lookup_firehose/0,
+         post_msg/2]).
 
 lookup_firehose() ->
     case logplex_app:config(firehose_channel_id, undefined) of
@@ -56,24 +37,13 @@ lookup_firehose() ->
             {channel, FirehoseId}
     end.
 
-process_msg(ChannelId, Token, Msg)
-  when is_integer(ChannelId),
-       is_binary(Token),
-       is_binary(Msg) ->
-    case is_filtered(ChannelId, Token) of
-        true -> ok;
-        false -> post_msg(Msg)
-    end.
-
-create_ets_table() ->
-    ets:new(?FIREHOSE_FILTER_TAB, [named_table, public, set, {keypos, #token.id}]).
-
-%%% private
-
-post_msg(Msg) ->
+post_msg(<<"heroku">>, Msg) when is_binary(Msg) ->
     case lookup_firehose() of
         undefined -> ok; % do nothing
         Firehose ->
             logplex_channel:post_msg(Firehose, Msg)
-    end.
+    end;
+
+post_msg(_TokenName, _Msg) ->
+    ok.
             
