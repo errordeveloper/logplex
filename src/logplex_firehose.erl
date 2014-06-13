@@ -28,22 +28,21 @@
 -define(FIREHOSE_FILTER_TAB, firehose_filters).
 
 -export([lookup_firehose/0,
-         post_msg/2]).
+         post_msg/3]).
 
 lookup_firehose() ->
     case logplex_app:config(firehose_channel_id, undefined) of
         undefined -> undefined;
-        FirehoseId ->
-            {channel, FirehoseId}
+        FirehoseId -> FirehoseId
     end.
 
-post_msg(<<"heroku">>, Msg) when is_binary(Msg) ->
+post_msg(ChannelId, <<"heroku">>, Msg) when is_binary(Msg) ->
     case lookup_firehose() of
         undefined -> ok; % do nothing
-        Firehose ->
-            logplex_channel:post_msg(Firehose, Msg)
+        FirehoseId ->
+            ChannelId =/= FirehoseId andalso logplex_channel:post_msg({channel, FirehoseId}, Msg)
     end;
 
-post_msg(_TokenName, _Msg) ->
+post_msg(_ChannelId, _TokenName, _Msg) ->
     ok.
             
