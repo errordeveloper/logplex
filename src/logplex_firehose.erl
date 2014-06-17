@@ -36,7 +36,9 @@ lookup_firehose() ->
         FirehoseId -> FirehoseId
     end.
 
-post_msg(ChannelId, <<"heroku">>, Msg) when is_binary(Msg) ->
+post_msg(ChannelId, <<"heroku">>, Msg)
+  when is_integer(ChannelId),
+       is_binary(Msg) ->
     case lookup_firehose() of
         undefined -> ok; % do nothing
         FirehoseId ->
@@ -45,4 +47,3 @@ post_msg(ChannelId, <<"heroku">>, Msg) when is_binary(Msg) ->
 
 post_msg(_ChannelId, _TokenName, _Msg) ->
     ok.
-            
