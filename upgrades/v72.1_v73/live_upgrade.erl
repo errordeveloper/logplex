@@ -1,24 +1,13 @@
-% Run this once per cluster to create the firehose channel you will need to
-% record the returned ChannelId for use in the UpgradeNode fun.
-f(RunOnce).
-RunOnce = fun() ->
-    ChannelId = logplex_channel:create_id(),
-    not is_integer(ChannelId) andalso exit({expected_integer, ChannelId}),
-    Token = logplex_token:create(ChannelId, <<"lumbermill-firehose">>),
-
-    [{channel_id, ChannelId}, {token, Token}]
-end.
-
 f(UpgradeNode).
 UpgradeNode = fun () ->
     CurVsn = "v72.1",
     NextVsn = "v73",
     case logplex_app:config(git_branch) of
         CurVsn ->
-            io:format(whereis(user), "at=upgrade_start cur_vsn=~p~n", [CurVsn]);
+            io:format(whereis(user), "at=upgrade_start cur_vsn=~p~n", [tl(CurVsn)]);
         NextVsn ->
             io:format(whereis(user),
-                      "at=upgrade type=retry cur_vsn=~p old_vsn=~p~n", [CurVsn, NextVsn]);
+                      "at=upgrade type=retry cur_vsn=~p old_vsn=~p~n", [tl(CurVsn), tl(NextVsn)]);
         Else ->
             io:format(whereis(user),
                       "at=upgrade_start old_vsn=~p abort=wrong_version", [tl(Else)]),
