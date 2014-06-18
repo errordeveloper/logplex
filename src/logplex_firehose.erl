@@ -32,6 +32,7 @@
 post_msg(ChannelId, <<"heroku">>, Msg)
   when is_integer(ChannelId),
        is_binary(Msg) ->
+    logplex_stats:incr(firehose_received),
     case logplex_app:config(firehose_channel_id, undefined) of
         undefined -> ok; % do nothing
         ChannelId -> ok; % do nothing
