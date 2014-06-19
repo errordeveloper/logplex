@@ -17,8 +17,12 @@ new(Group)
        is_binary(Group) ->
     new({channel_group, Group});
 new({channel_group, Group}) ->
-    gproc_pool:new(Group, round_robin, [{auto_size, true}]),
-    {channel_group, Group}.
+    try gproc_pool:new(Group, round_robin, [{auto_size, true}]) of
+        ok -> {channel_group, Group}
+    catch
+        error:exists ->
+            {channel_group, Group}
+    end.
 
 delete({channel_group, Group}) ->
     gproc_pool:delete(Group).
