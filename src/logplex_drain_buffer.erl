@@ -197,6 +197,16 @@ handle_sync_event(Event, _From, StateName, State) ->
     {next_state, StateName, State, ?HIBERNATE_TIMEOUT}.
 
 %% @private
+handle_info({join_channel_group, {channel_group, _}=Group}, StateName, S = #state{channel_id=ChannelId}) ->
+    logplex_channel_group:join(Group, {channel, ChannelId}),
+    case StateName of
+        passive ->
+            {next_state, passive, S, ?HIBERNATE_TIMEOUT};
+        active ->
+            send(S);
+        notify ->
+            send_notification(S)
+    end;
 handle_info({post, Msg}, StateName, S = #state{buf = OldBuf}) ->
     NewBuf = case logplex_msg_buffer:push_ext(Msg, OldBuf) of
                  {insert, Buf} -> Buf;

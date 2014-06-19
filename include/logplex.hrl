@@ -5,6 +5,9 @@
                 channel_id :: logplex_channel:id() | '$1',
                 name :: logplex_token:name() | '_'
                }).
+-record(channel_group_stat, {channel_group :: logplex_channel_group:name(),
+                             channel_id :: logplex_channel:id(),
+                             key :: atom()}).
 -record(channel_stat, {channel_id :: logplex_channel:id(),
                        key :: atom()}).
 -record(drain_stat, {drain_id :: logplex_drain:id(),

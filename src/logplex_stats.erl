@@ -150,6 +150,10 @@ start_timer() ->
     Time = 60000 - ((Secs rem 60 * 1000) + (Micro div 1000)),
     erlang:start_timer(Time, ?MODULE, flush).
 
+log_stat(UnixTS, #channel_group_stat{channel_group=ChannelGroup, channel_id=ChannelId, key=Key}, Val) ->
+    io:format("m=logplex_stats ts=~p channel_group=~p channel_id=~p ~p=~p~n",
+        [UnixTS, ChannelGroup, ChannelId, Key, Val]);
+
 log_stat(UnixTS, #drain_stat{drain_id=DrainId, channel_id=ChannelId, key=Key}, Val) ->
     io:format("m=logplex_stats ts=~p channel_id=~p drain_id=~p ~p=~p~n",
         [UnixTS, ChannelId, DrainId, Key, Val]);

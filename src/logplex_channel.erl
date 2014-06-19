@@ -51,6 +51,7 @@
          ,cache/3
          ,binary_to_flags/1
          ,create_ets_table/0
+         ,join_group/2
         ]).
 
 -export([num_channels/0]).
@@ -96,11 +97,13 @@ create_ets_table() ->
 register({channel, ChannelId} = C)
   when is_integer(ChannelId) ->
     put(logplex_channel_id, ChannelId), %% post mortem debug info
+    logplex_firehose:register_channel(C),
     gproc:add_local_property(C, true).
 
 unregister({channel, ChannelId} = C)
   when is_integer(ChannelId) ->
     erase(logplex_channel_id),
+    logplex_firehose:unregister_channel(C),
     gproc:unreg({p, l, C}).
 
 whereis({channel, _ChannelId} = Name) ->
@@ -114,6 +117,10 @@ post_msg(Where, Msg) when is_binary(Msg) ->
 post_msg({channel, ChannelId} = Name, Msg) when is_tuple(Msg) ->
     logplex_stats:incr(#channel_stat{channel_id=ChannelId, key=channel_post}),
     gproc:send({p, l, Name}, {post, Msg}),
+    ok.
+
+join_group({channel, _}=Name, {channel_group, _}=Group) ->
+    gproc:send({p, l, Name}, {join_channel_group, Group}),
     ok.
 
 -spec create_id() -> id() | {'error', term()}.

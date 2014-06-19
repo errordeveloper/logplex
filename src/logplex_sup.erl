@@ -47,6 +47,8 @@ init([]) ->
        ,{logplex_drain_sup,
          {logplex_drain_sup, start_link, []},
          permanent, 2000, supervisor, [logplex_drain_sup]}
+       ,{logplex_firehose, {logplex_firehose, start_link, []},
+         permanent, 2000, worker, [logplex_firehose]}
        ,{nsync, {nsync, start_link, [logplex_app:nsync_opts()]},
          permanent, 2000, worker, [nsync]}
        ,{redgrid, {redgrid, start_link, []},
