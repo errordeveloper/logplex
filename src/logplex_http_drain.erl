@@ -639,6 +639,10 @@ close_if_old(State = #state{client = Client}) ->
             {not_closed, start_close_timer(State)}
     end.
 
+start_drain_buffer(State = #state{channel_id=logplex_firehose,
+                                  buf = undefined}) ->
+    Buf = logplex_firehose:where(),
+    State#state{buf = Buf};
 start_drain_buffer(State = #state{channel_id=ChannelId,
                                   buf = undefined}) ->
     Size = default_buf_size(),
@@ -654,6 +658,16 @@ maybe_resize(Status, Buf) ->
             logplex_drain_buffer:resize_msg_buffer(Buf, default_buf_size())
     end.
 
+maybe_shrink(State = #state{channel_id=logplex_firehose, service=Status, last_good_time=LastGood}) ->
+    case {(is_tuple(LastGood) andalso tuple_size(LastGood) =:= 3 andalso
+                     now_to_msec(LastGood) < now_to_msec(os:timestamp())-?SHRINK_TIMEOUT)
+                    orelse LastGood =:= undefined,
+                   Status} of
+        {true, normal} ->
+            State#state{service=degraded};
+        {_, _} ->
+            State#state{service=normal}
+    end;
 maybe_shrink(State = #state{buf=Buf, service=Status, last_good_time=LastGood}) ->
     case {(is_tuple(LastGood) andalso tuple_size(LastGood) =:= 3 andalso
                      now_to_msec(LastGood) < now_to_msec(os:timestamp())-?SHRINK_TIMEOUT)

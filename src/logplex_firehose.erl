@@ -24,59 +24,38 @@
 -behaviour(gen_server).
 
 -include("logplex.hrl").
+-include_lib("ex_uri/include/ex_uri.hrl").
+-include("logplex_drain.hrl").
 -include("logplex_logging.hrl").
 
--define(APP, logplex).
--define(CHANNEL_GROUP, {channel_group, ?MODULE}).
+-define(CHANNEL, {channel, ?MODULE}).
 
--export([create_channel_group/0,
-         update_firehose_channels/0,
-         is_firehose_channel/1,
-         id_to_channel/1,
-         register_channel/1,
-         unregister_channel/1,
-         post_msg/3]).
+-export([post_msg/3]).
+-export([where/0]).
 
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
+
+-record(pool, {next=1, size=0, pool={}}).
+-record(state, {buf :: pid(),
+                drain_pool :: #pool{}}).
 
 %%%--------------------------------------------------------------------
 %%% API
 %%%--------------------------------------------------------------------
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, 
+                          #state{}, []).
 
-update_firehose_channels() ->
-    Ids = logplex_app:config(firehose_channel_ids, []),
-    update_firehose_channels(Ids).
-
-id_to_channel({channel, Id}=Chan) when is_integer(Id) ->
-    Chan;
-id_to_channel(Id) when is_list(Id) ->
-    id_to_channel(list_to_integer(Id));
-id_to_channel(Id) when is_integer(Id) ->
-    {channel, Id}.
-
-
-is_firehose_channel({channel, Id}) ->
-    List = logplex_app:config(firehose_channel_ids, []),
-    in_list(Id, List).
-
-register_channel({channel, _Id}=Channel) ->
-    case is_firehose_channel(Channel) of
-        false -> ok; % ignore
-        true ->
-            logplex_channel_group:join(?CHANNEL_GROUP, Channel)
-    end.
-
-unregister_channel({channel, _Id}=Channel) ->
-    catch logplex_channel_group:unregister(?CHANNEL_GROUP, Channel).
+where() ->
+    hd(logplex_channel:whereis(?CHANNEL)).
 
 post_msg(ChannelId, <<"heroku">>, Msg)
   when is_integer(ChannelId),
        is_binary(Msg) ->
-    logplex_channel_group:post_msg(?CHANNEL_GROUP, Msg);
+    gproc:send({p, l, ?CHANNEL}, {post, Msg}),
+    ok;
 
 post_msg(_ChannelId, _TokenName, _Msg) ->
     ok.
@@ -85,10 +64,12 @@ post_msg(_ChannelId, _TokenName, _Msg) ->
 %%% gen_server callbacks
 %%%--------------------------------------------------------------------
 
-init([]) ->
-    create_channel_group(),
-    update_firehose_channels(),
-    {ok, []}.
+init(State0=#state{}) ->
+    process_flag(trap_exit, true),
+    ?INFO("at=spawn", []),
+    State1 = start_firehose_channel(State0),
+    State = start_firehose_drains(State1),
+    {ok, State, hibernate}.
 
 handle_call(Call, _From, State) ->
     ?WARN("Unexpected call ~p.", [Call]),
@@ -99,6 +80,15 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 %% @private
+handle_info({mail, Buf, new_data}, S=#state{ buf=Buf, drain_pool=Drains }) ->
+    pobox:active(Buf, fun filter_msg/2, Drains),
+    {noreply, S};
+handle_info({mail, Buf, Frame, Count, Lost}, S=#state{ buf=Buf, drain_pool=Drains0 }) ->
+    Status={Dest, Drains} = next(Drains0),
+    send(Dest, Buf, Frame, Count, Lost),
+    log_stats(Status, Count, Lost),
+    pobox:notify(Buf),
+    {noreply, S#state{ drain_pool=Drains }};
 handle_info(Info, State) ->
     ?WARN("Unexpected info ~p", [Info]),
     {noreply, State}.
@@ -115,18 +105,49 @@ code_change(_OldVsn, State, _Extra) ->
 %%% internal functions
 %%%--------------------------------------------------------------------
 
-create_channel_group() ->
-    logplex_channel_group:new(?CHANNEL_GROUP).
+drain_urls() ->
+    logplex_app:config(firehose_drain_urls, []).
 
-update_firehose_channels([]) ->
-    [];
-update_firehose_channels(Ids) ->
-    Channels = lists:map(fun id_to_channel/1, Ids),
-    [ logplex_channel:join_group(Channel, ?CHANNEL_GROUP) || Channel <- Channels].
+start_firehose_channel(State0=#state{ buf=undefined }) ->
+    {ok, Buf} = pobox:start_link(self(),
+                     logplex_app:config(drain_buffer_size, 1024), queue),
+    gproc:add_local_property(?CHANNEL, true),
+    gproc:give_away({p, l, ?CHANNEL}, Buf),
+    State0#state{ buf=Buf }.
 
-in_list(_Id, []) ->
-    false;
-in_list(Id, [{channel, Id} | _Rest]) ->
-    true;
-in_list(Id, [_Hd | Rest]) ->
-    in_list(Id, Rest).
+start_firehose_drains(State0=#state{ drain_pool=undefined }) ->
+    Drains = [ start_firehose_drain(Url) || Url <- drain_urls() ],
+    DrainPool = #pool{ size=length(Drains), pool=list_to_tuple(Drains)},
+    State0#state{ drain_pool=DrainPool }.
+
+start_firehose_drain(Url) ->
+    {ok, Id, Token} = logplex_drain:reserve_token(),
+    Drain = logplex_drain:new(Id, ?MODULE, Token, http, Url),
+    {ok, _} = logplex_drain:start(Drain),
+    Drain.
+
+filter_msg(_Msg, State=#pool{ size=0 }) ->
+    {drop, State};
+filter_msg(Msg, State) ->
+    {{ok, Msg}, State}.
+
+next(S=#pool{ size=0 }) ->
+    {#drain{}, S};
+next(#pool{ next=N, size=N, pool=P }) ->
+    {erlang:element(N, P), #pool{next=1, size=N, pool=P}};
+next(#pool{ next=N, size=S, pool=P }) ->
+    {erlang:element(N, P), #pool{next=N+1, size=S, pool=P}}.
+
+%% @private
+send(#drain{ id=undefined }, _, _, _, _) ->
+    ok;
+send(#drain{ id=DrainId }, Buf, Frame, Count, Lost) ->
+    gproc:send({n, l, {drain, DrainId}},
+               {logplex_drain_buffer, Buf, {frame, Frame, Count, Lost}}),
+    ok.
+
+log_stats({#drain{ id=DrainId }, #pool{ size=Size }}, Sent, Lost) when Lost > 0 ->
+    ?WARN("drain_pool_size=~p drain_id=~p sent=~p dropped=~p at=try_send",
+          [Size, DrainId, Sent, Lost]);
+log_stats(_, _, _) ->
+    ok.

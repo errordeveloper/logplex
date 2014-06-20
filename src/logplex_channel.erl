@@ -97,13 +97,11 @@ create_ets_table() ->
 register({channel, ChannelId} = C)
   when is_integer(ChannelId) ->
     put(logplex_channel_id, ChannelId), %% post mortem debug info
-    logplex_firehose:register_channel(C),
     gproc:add_local_property(C, true).
 
 unregister({channel, ChannelId} = C)
   when is_integer(ChannelId) ->
     erase(logplex_channel_id),
-    logplex_firehose:unregister_channel(C),
     gproc:unreg({p, l, C}).
 
 whereis({channel, _ChannelId} = Name) ->
@@ -226,7 +224,9 @@ logs(ChannelId, Num) when is_integer(ChannelId), is_integer(Num) ->
             Logs
     end.
 
-info(ChannelId) when is_integer(ChannelId) ->
+info(ChannelId)
+  when is_integer(ChannelId);
+       ChannelId =:= logplex_firehose ->
     case lookup(ChannelId) of
         #channel{} ->
             {ChannelId,

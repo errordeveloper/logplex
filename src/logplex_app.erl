@@ -67,7 +67,7 @@ start(_StartType, _StartArgs) ->
     boot_pagerduty(),
     setup_redgrid_vals(),
     setup_redis_shards(),
-    setup_firehose_channels(),
+    setup_firehose_drain_urls(),
     application:start(nsync),
     logplex_sup:start_link().
 
@@ -99,7 +99,7 @@ cache_os_envvars() ->
                       ,{metrics_channel_id, ["METRICS_CHANNEL_ID"],
                         optional,
                         integer}
-                      ,{firehose_channel_ids, ["FIREHOSE_CHANNEL_IDS"],
+                      ,{firehose_drain_urls, ["FIREHOSE_DRAIN_URLS"],
                         optional}
                       ,{local_ip, ["LOCAL_IP"]}
                       ,{metrics_namespace, ["METRICS_NAMESPACE"],
@@ -221,10 +221,15 @@ setup_redis_shards() ->
     application:set_env(logplex, logplex_shard_urls,
                         logplex_shard:redis_sort(URLs)).
 
-setup_firehose_channels() ->
-    ChannelIdStrings = string:tokens(config(firehose_channel_ids, ""), ","),
-    ChannelIds = [ logplex_firehose:id_to_channel(Id) || Id <- ChannelIdStrings ],
-    application:set_env(logplex, firehose_channel_ids, ChannelIds).
+setup_firehose_drain_urls() ->
+    URLs = case config(firehose_drain_urls, []) of
+               UrlString when is_list(UrlString), UrlString =/= [] ->
+                   string:tokens(UrlString, ",");
+               _ ->
+                   []
+           end,
+    URIs = [ logplex_drain:parse_url(Url) || Url <- URLs ],
+    application:set_env(logplex, firehose_drain_urls, URIs).
 
 logplex_work_queue_args() ->
     MaxLength = logplex_utils:to_int(config(queue_length)),
