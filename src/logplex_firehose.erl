@@ -54,6 +54,7 @@ where() ->
 post_msg(ChannelId, <<"heroku">>, Msg)
   when is_integer(ChannelId),
        is_binary(Msg) ->
+    logplex_stats:incr(#channel_stat{channel_id=?MODULE, key=channel_post}),
     gproc:send({p, l, ?CHANNEL}, {post, Msg}),
     ok;
 
@@ -146,8 +147,12 @@ send(#drain{ id=DrainId }, Buf, Frame, Count, Lost) ->
                {logplex_drain_buffer, Buf, {frame, Frame, Count, Lost}}),
     ok.
 
-log_stats({#drain{ id=DrainId }, #pool{ size=Size }}, Sent, Lost) when Lost > 0 ->
-    ?WARN("drain_pool_size=~p drain_id=~p sent=~p dropped=~p at=try_send",
-          [Size, DrainId, Sent, Lost]);
+log_stats({#drain{ id=DrainId }, _}, Sent, Lost) ->
+    logplex_stats:incr(#drain_stat{drain_id=DrainId,
+                                   channel_id=?MODULE,
+                                   key=drain_delivered}, Sent),
+    logplex_stats:incr(#drain_stat{drain_id=DrainId,
+                                   channel_id=?MODULE,
+                                   key=drain_dropped}, Lost);
 log_stats(_, _, _) ->
     ok.
