@@ -51,8 +51,9 @@ start_link() ->
 where() ->
     hd(logplex_channel:whereis(?CHANNEL)).
 
-post_msg(ChannelId, <<"heroku">>, Msg)
+post_msg(ChannelId, TokenName, Msg)
   when is_integer(ChannelId),
+       is_binary(TokenName),
        is_binary(Msg) ->
     logplex_stats:incr(#channel_stat{channel_id=?MODULE, key=channel_post}),
     gproc:send({p, l, ?CHANNEL}, {post, Msg}),
