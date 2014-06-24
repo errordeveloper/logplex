@@ -48,12 +48,14 @@ new(ChannelIds) when is_list(ChannelIds) ->
     ets:new(?TAB, [named_table, public, set,
                    {keypos, #firehose.idx},
                    {read_concurrency, true}]),
-    [register_channel(Id) || Id <- ChannelIds ].
+    [register_channel(Id) || Id <- ChannelIds ],
+    ok.
 
 register_channel(ChannelId) when is_integer(ChannelId) ->
     ?INFO("channel_id=~p at=spawn", [ChannelId]),
     Idx = ets:info(?TAB, size),
-    ets:insert(?TAB, #firehose{ idx=Idx, channel_id=ChannelId }).
+    true = ets:insert(?TAB, #firehose{ idx=Idx, channel_id=ChannelId }),
+    ok.
 
 unregister_channel(ChannelId) when is_integer(ChannelId) ->
     List = ets:tab2list(?TAB),
