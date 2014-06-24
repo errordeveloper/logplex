@@ -67,7 +67,6 @@ start(_StartType, _StartArgs) ->
     boot_pagerduty(),
     setup_redgrid_vals(),
     setup_redis_shards(),
-    setup_firehose_channels(),
     application:start(nsync),
     logplex_sup:start_link().
 
@@ -220,11 +219,6 @@ setup_redis_shards() ->
            end,
     application:set_env(logplex, logplex_shard_urls,
                         logplex_shard:redis_sort(URLs)).
-
-setup_firehose_channels() ->
-    ChannelIdStrings = string:tokens(config(firehose_channel_ids, ""), ","),
-    ChannelIds = [ logplex_firehose:id_to_channel(Id) || Id <- ChannelIdStrings ],
-    application:set_env(logplex, firehose_channel_ids, ChannelIds).
 
 logplex_work_queue_args() ->
     MaxLength = logplex_utils:to_int(config(queue_length)),

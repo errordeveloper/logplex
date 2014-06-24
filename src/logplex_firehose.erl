@@ -21,112 +21,58 @@
 %% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 %% OTHER DEALINGS IN THE SOFTWARE.
 -module(logplex_firehose).
--behaviour(gen_server).
 
 -include("logplex.hrl").
 -include("logplex_logging.hrl").
 
--define(APP, logplex).
--define(CHANNEL_GROUP, {channel_group, ?MODULE}).
+-define(TAB, firehose).
 
--export([create_channel_group/0,
-         update_firehose_channels/0,
-         is_firehose_channel/1,
-         id_to_channel/1,
+-export([new/0,
+         new/1,
          register_channel/1,
          unregister_channel/1,
+         next_firehose/1,
          post_msg/3]).
 
--export([start_link/0, init/1, handle_call/3, handle_cast/2,
-         handle_info/2, terminate/2, code_change/3]).
+-record(firehose, {idx :: integer(),
+                   channel_id :: integer()}).
 
 %%%--------------------------------------------------------------------
 %%% API
 %%%--------------------------------------------------------------------
 
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+new() ->
+    new([]).
 
-update_firehose_channels() ->
-    Ids = logplex_app:config(firehose_channel_ids, []),
-    update_firehose_channels(Ids).
+new(ChannelIds) when is_list(ChannelIds) ->
+    ets:new(?TAB, [named_table, public, set,
+                   {keypos, #firehose.idx},
+                   {read_concurrency, true}]),
+    [register_channel(Id) || Id <- ChannelIds ].
 
-id_to_channel({channel, Id}=Chan) when is_integer(Id) ->
-    Chan;
-id_to_channel(Id) when is_list(Id) ->
-    id_to_channel(list_to_integer(Id));
-id_to_channel(Id) when is_integer(Id) ->
-    {channel, Id}.
+register_channel(ChannelId) when is_integer(ChannelId) ->
+    ?INFO("channel_id=~p at=spawn", [ChannelId]),
+    Idx = ets:info(?TAB, size),
+    ets:insert(?TAB, #firehose{ idx=Idx, channel_id=ChannelId }).
 
+unregister_channel(ChannelId) when is_integer(ChannelId) ->
+    List = ets:tab2list(?TAB),
+    ets:delete_all_objects(?TAB),
+    [ register_channel(Id) || #firehose{ channel_id=Id } <- List, Id =/= ChannelId ],
+    ok.
 
-is_firehose_channel({channel, Id}) ->
-    List = logplex_app:config(firehose_channel_ids, []),
-    in_list(Id, List).
-
-register_channel({channel, _Id}=Channel) ->
-    case is_firehose_channel(Channel) of
-        false -> ok; % ignore
-        true ->
-            logplex_channel_group:join(?CHANNEL_GROUP, Channel)
+post_msg(ChannelId, TokenName, Msg)
+  when is_integer(ChannelId),
+       is_binary(TokenName),
+       is_binary(Msg) ->
+    case ets:lookup(?TAB, next_firehose(ets:info(?TAB, size))) of
+        [#firehose{ channel_id=FirehoseId }] ->
+            logplex_stats:incr(#firehose_stat{channel_id=FirehoseId, key=firehose_post}),
+            logplex_channel:post_msg({channel, FirehoseId}, Msg);
+        _ -> ok % ignored
     end.
 
-unregister_channel({channel, _Id}=Channel) ->
-    catch logplex_channel_group:unregister(?CHANNEL_GROUP, Channel).
-
-post_msg(ChannelId, <<"heroku">>, Msg)
-  when is_integer(ChannelId),
-       is_binary(Msg) ->
-    logplex_channel_group:post_msg(?CHANNEL_GROUP, Msg);
-
-post_msg(_ChannelId, _TokenName, _Msg) ->
-    ok.
-
-%%%--------------------------------------------------------------------
-%%% gen_server callbacks
-%%%--------------------------------------------------------------------
-
-init([]) ->
-    create_channel_group(),
-    update_firehose_channels(),
-    {ok, []}.
-
-handle_call(Call, _From, State) ->
-    ?WARN("Unexpected call ~p.", [Call]),
-    {noreply, State}.
-
-handle_cast(Msg, State) ->
-    ?WARN("Unexpected cast ~p", [Msg]),
-    {noreply, State}.
-
-%% @private
-handle_info(Info, State) ->
-    ?WARN("Unexpected info ~p", [Info]),
-    {noreply, State}.
-
-%% @private
-terminate(_Reason, _State) ->
-    ok.
-
-%% @private
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%%--------------------------------------------------------------------
-%%% internal functions
-%%%--------------------------------------------------------------------
-
-create_channel_group() ->
-    logplex_channel_group:new(?CHANNEL_GROUP).
-
-update_firehose_channels([]) ->
-    [];
-update_firehose_channels(Ids) ->
-    Channels = lists:map(fun id_to_channel/1, Ids),
-    [ logplex_channel:join_group(Channel, ?CHANNEL_GROUP) || Channel <- Channels].
-
-in_list(_Id, []) ->
-    false;
-in_list(Id, [{channel, Id} | _Rest]) ->
-    true;
-in_list(Id, [_Hd | Rest]) ->
-    in_list(Id, Rest).
+next_firehose(Num) when Num > 0 ->
+    erlang:phash2({erlang:make_ref(), self()}, Num);
+next_firehose(_) ->
+    0.
