@@ -37,7 +37,6 @@ start_link() ->
 
 init([]) ->
     create_ets_tables(),
-    create_firehose_channels(),
     {ok, []}.
 
 create_ets_tables() ->
@@ -46,13 +45,8 @@ create_ets_tables() ->
     logplex_drain:create_ets_table(),
     logplex_cred:create_ets_table(),
     logplex_session:create_ets_table(),
+    logplex_firehose:create_ets_table(),
     ok.
-
-create_firehose_channels() ->
-    ChannelIdStrings = string:tokens(logplex_app:config(firehose_channel_ids, ""), ","),
-    ChannelIds = [ list_to_integer(Id) || Id <- ChannelIdStrings ],
-    application:set_env(logplex, firehose_channel_ids, ChannelIds),
-    logplex_firehose:new(ChannelIds).
 
 -spec poll(fun ( () -> 'not_found' | {'found', T} | {'error', E} ),
            pos_integer()) ->

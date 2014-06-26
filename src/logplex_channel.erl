@@ -25,7 +25,7 @@
 -export([whereis/1
          ,register/1
          ,unregister/1
-         ,post_msg/2
+         ,post_msg/3
         ]).
 
 -export([create_id/0, delete/1, lookup/1,
@@ -106,14 +106,14 @@ unregister({channel, ChannelId} = C)
 whereis({channel, _ChannelId} = Name) ->
     [ Pid || {Pid, true} <- gproc:lookup_local_properties(Name) ].
 
-post_msg(Where, Msg) when is_binary(Msg) ->
+post_msg(Where, Token, Msg) when is_binary(Msg) ->
     case logplex_syslog_utils:from_msg(Msg) of
         {error, _} = E -> E;
-        ParsedMsg -> post_msg(Where, ParsedMsg)
+        ParsedMsg -> post_msg(Where, Token, ParsedMsg)
     end;
-post_msg({channel, ChannelId} = Name, Msg) when is_tuple(Msg) ->
+post_msg({channel, ChannelId} = Name, Token, Msg) when is_tuple(Msg) ->
     logplex_stats:incr(#channel_stat{channel_id=ChannelId, key=channel_post}),
-    gproc:send({p, l, Name}, {post, Msg}),
+    gproc:send({p, l, Name}, {post, Token, Msg}),
     ok.
 
 -spec create_id() -> id() | {'error', term()}.

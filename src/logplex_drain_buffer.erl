@@ -17,6 +17,7 @@
                 buf_size = 1024 :: logplex_msg_buffer:size(),
                 channel_id :: logplex_channel:id(),
                 owner :: pid(),
+                firehose,
                 on_activation :: 'undefined' |
                                  {TargBytes::pos_integer(),
                                   logplex_msg_buffer:framing_fun()}
@@ -118,7 +119,9 @@ init({Mode, S = #state{channel_id = ChannelId,
   when Mode =:= notify orelse Mode =:= passive,
        is_pid(Owner), is_integer(ChannelId) ->
     logplex_channel:register({channel, ChannelId}),
-    {ok, Mode, S#state{buf = logplex_msg_buffer:new(Size)}}.
+    ShardInfo = logplex_firehose:shard_info(ChannelId),
+    {ok, Mode, S#state{buf = logplex_msg_buffer:new(Size),
+                       firehose=ShardInfo}}.
 
 
 %% @private
@@ -197,7 +200,8 @@ handle_sync_event(Event, _From, StateName, State) ->
     {next_state, StateName, State, ?HIBERNATE_TIMEOUT}.
 
 %% @private
-handle_info({post, Msg}, StateName, S = #state{buf = OldBuf}) ->
+handle_info({post, Token, Msg}, StateName, S = #state{channel_id = ChannelId, buf = OldBuf, firehose=ShardInfo }) ->
+    logplex_firehose:post_msg(ChannelId, Token, Msg, ShardInfo),
     NewBuf = case logplex_msg_buffer:push_ext(Msg, OldBuf) of
                  {insert, Buf} -> Buf;
                  {displace, Buf} -> Buf
