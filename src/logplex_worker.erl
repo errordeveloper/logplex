@@ -89,7 +89,8 @@ route(Token, State = #state{}, RawMsg)
     case logplex_token:lookup(Token) of
         #token{channel_id=ChannelId, name=TokenName} ->
             CookedMsg = iolist_to_binary(re:replace(RawMsg, Token, TokenName)),
-            process_drains(ChannelId, Token, CookedMsg),
+            logplex_firehose:post_msg(ChannelId, Token, RawMsg),
+            process_drains(ChannelId, CookedMsg),
             process_tails(ChannelId, CookedMsg),
             process_msg(ChannelId, State, CookedMsg);
         _ ->
@@ -102,8 +103,8 @@ route(Token, State = #state{}, RawMsg)
             ok
     end.
 
-process_drains(ChannelID, Token, Msg) ->
-    logplex_channel:post_msg({channel, ChannelID}, Token, Msg).
+process_drains(ChannelID, Msg) ->
+    logplex_channel:post_msg({channel, ChannelID}, Msg).
 
 process_tails(ChannelId, Msg) ->
     logplex_tail:route(ChannelId, Msg),
